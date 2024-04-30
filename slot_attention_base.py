@@ -82,7 +82,8 @@ class SoftPositionEmbed(nn.Module):
         """
         super().__init__()
         self.embedding = nn.Linear(4, hidden_size, bias=True)
-        self.grid = build_grid(resolution).to(self.embedding.weight.device)
+        grid = build_grid(resolution).to(self.embedding.weight.device)
+        self.grid = nn.Parameter(grid, requires_grad=False)
 
     def forward(self, inputs):
         grid = self.embedding(self.grid)
@@ -169,13 +170,14 @@ class SlotAttentionAutoEncoder(nn.Module):
             iters = self.num_iterations,
             eps = 1e-8, 
             hidden_dim = 128)
+        self.norm = nn.LayerNorm(hid_dim)
 
     def forward(self, image):
         # `image` has shape: [batch_size, num_channels, width, height].
 
         # Convolutional encoder with position embedding.
         x = self.encoder_cnn(image)  # CNN Backbone.
-        x = nn.LayerNorm(x.shape[1:])(x)
+        x = self.norm(x)
         x = self.fc1(x)
         x = F.relu(x)
         x = self.fc2(x)  # Feedforward network on set.
@@ -208,7 +210,7 @@ class SlotAttentionAutoEncoder(nn.Module):
     
 
 class SA_module(L.LightningModule):
-    def __init__(self, resolution, num_slots, num_iterations, hid_dim):
+    def __init__(self, resolution=(128, 128), num_slots=11, num_iterations=3, hid_dim=64, batch_size=64, train_data=[], val_data=[], desired_steps=300000):
         super().__init__()
         self.model = SlotAttentionAutoEncoder(resolution, num_slots, num_iterations, hid_dim)
         self.loss = nn.MSELoss()
@@ -217,11 +219,12 @@ class SA_module(L.LightningModule):
         self.num_iterations = num_iterations
         self.hid_dim = hid_dim
 
-        self.train_data = None
-        self.val_data = None
-        self.batch_size = 64
+        self.train_data = train_data
+        self.val_data = val_data
+        self.batch_size = batch_size
         self.steps_per_epoch = len(self.train_data) // self.batch_size
-        self.n_epochs = 300000 // self.steps_per_epoch + 1
+        self.desired_steps = desired_steps
+        self.n_epochs = self.desired_steps // self.steps_per_epoch + 1
 
         self.save_hyperparameters()
 
@@ -229,24 +232,24 @@ class SA_module(L.LightningModule):
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
-        recon_combined, _, _, _ = self.model(batch)
-        loss = self.loss(recon_combined, batch)
+        recon_combined, _, _, _ = self.model(batch['image'])
+        loss = self.loss(recon_combined, batch['image'])
         self.log('train_loss', loss, on_step=False, on_epoch=True)
         return loss
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=1e-3, steps_per_epoch=self.steps_per_epoch, epochs=self.n_epochs)
-        return [optimizer], [scheduler]
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=1e-3, total_steps=self.trainer.estimated_stepping_batches)
+        return [optimizer], [{"scheduler": scheduler, "interval": 'step'}]
 
     def train_dataloader(self):
-        return torch.utils.data.DataLoader(self.train_data, batch_size=self.batch_size, shuffle=True, num_workers=4, pin_memory=True)
+        return torch.utils.data.DataLoader(self.train_data, batch_size=self.batch_size, shuffle=True, num_workers=8, pin_memory=True)
 
     def val_dataloader(self):
-        return torch.utils.data.DataLoader(self.val_data, batch_size=self.batch_size)
+        return torch.utils.data.DataLoader(self.val_data, batch_size=self.batch_size, num_workers=8)
 
     def validation_step(self, batch, batch_idx):
-        recon_combined, _, _, _ = self.model(batch)
-        loss = self.loss(recon_combined, batch)
+        recon_combined, _, _, _ = self.model(batch['image'])
+        loss = self.loss(recon_combined, batch['image'])
         self.log('val_loss', loss, on_step=False, on_epoch=True)
         return loss
