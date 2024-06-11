@@ -15,7 +15,7 @@ class SlotAttentionLogger(Callback):
         if batch_idx == 0:
             n_samples = 10
             # recon_combinde.shape = [batch_size, num_channels, width, height], recons.shape = [batch_size, num_slots, width, height, num_channels], masks.shape = [batch_size, num_slots, width, height, 1]
-            recons_combined, recons, masks, slots = pl_module.model(batch['image'])
+            recons_combined, recons, masks, slots, _, _ = pl_module.model(batch['image'])
             recons_combined = recons_combined[:n_samples].clip(-1, 1)
             gts = batch['image'][:n_samples].clip(-1, 1)
             # reshape num_slots to width
