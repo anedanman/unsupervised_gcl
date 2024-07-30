@@ -53,9 +53,9 @@ class SlotAttentionAutoEncoder(nn.Module):
         
     def forward(self, image):
         slots_ = self.img2slots(image)
-
+        slots = slots_.reshape((-1, slots_.shape[-1]))
         # resample slots with GMM
-        slots, _, log_likelihood = self.slot_upd(slots_)
+        slots, _, log_likelihood = self.slot_upd(slots)
 
         # `slots` has shape: [batch_size, num_slots, slot_size].
         recon_combined, recons, masks, slots = self.proc_slots(slots, image.shape[0])

@@ -72,7 +72,7 @@ class SA_PAE_module(L.LightningModule):
         self.desired_steps = desired_steps
         self.n_epochs = self.desired_steps // self.steps_per_epoch + 1
         self.save_hyperparameters()
-        self.init_gmm_params()
+        # self.init_gmm_params()
 
     def forward(self, x):
         return self.model(x)
@@ -127,6 +127,7 @@ class SA_PAE_module(L.LightningModule):
         self.log_dict(ap_metrics, on_step=False, on_epoch=True)
         return metrics['val_loss']
     
+    @torch.no_grad()
     def init_gmm_params(self):
         print('Initializing GMM parameters...')
         train_loader = self.train_dataloader()
@@ -137,16 +138,20 @@ class SA_PAE_module(L.LightningModule):
             slots = self.model.img2slots(images)
             total_slots.append(slots)
             i += 1
-            if i == 10:
+            print(i)
+            if i == 4:
                 break
         total_slots = torch.cat(total_slots, dim=0)
+        total_slots = total_slots.reshape(-1, total_slots.shape[-1])
         total_slots = total_slots.cpu().numpy()
         gmm = GaussianMixture(
-            n_components=self.model.num_components,
+            n_components=self.num_components,
             covariance_type='diag',
             init_params='kmeans',
             max_iter=100
         )
+        print('Fitting GMM...')
+        print('Total slots shape:', total_slots.shape)
         gmm.fit(total_slots)
         self.model.gmm.means.data = torch.FloatTensor(gmm.means_.copy(), device=self.device)
         self.model.gmm.log_stds.data = torch.FloatTensor(1/np.sqrt(gmm.precisions_).copy(), device=self.device)

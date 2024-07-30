@@ -9,7 +9,7 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 
 
-from slot_attention_base import SA_module, SA_PAE_module
+from modules import SA_PAE_module
 from callbacks import SlotAttentionLogger
 from data import CLEVR
 
@@ -29,7 +29,7 @@ def main():
     parser.add_argument('--scale', type=float, default=0.1)
     args = parser.parse_args()
 
-    wandb_logger = WandbLogger(project='slot attention', name=args.name, log_model='all')
+    wandb_logger = WandbLogger(project='sanity check', name=args.name, log_model='all')
     # checkpoint callback saving the latest model and the best model based on validation loss
     checkpoint_callback = ModelCheckpoint(
         monitor='val_loss',
@@ -56,6 +56,7 @@ def main():
     )
     # load weights from default_weights.ckpt (state dict), nonstrict
     model.load_state_dict(torch.load('default_weights.ckpt'), strict=False)
+    model.init_gmm_params()
     trainer = Trainer(
         max_epochs=model.n_epochs,
         logger=wandb_logger,
