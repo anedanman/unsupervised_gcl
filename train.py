@@ -23,6 +23,10 @@ def main():
     parser.add_argument('--max_objs', type=int, default=11)
     parser.add_argument('--name', type=str, default='default')
     parser.add_argument('--steps', type=int, default=300000)
+    parser.add_argument('--classical_update', action='store_true')
+    parser.add_argument('--use_global_concepts', action='store_true')
+    parser.add_argument('--num_components', type=int, default=300)
+    parser.add_argument('--scale', type=float, default=0.1)
     args = parser.parse_args()
 
     wandb_logger = WandbLogger(project='slot attention', name=args.name, log_model='all')
@@ -45,6 +49,10 @@ def main():
         train_data=train_data,
         val_data=val_data,
         desired_steps=args.steps,
+        num_components=args.num_components,
+        use_global_concepts=args.use_global_concepts,
+        classical_update=args.classical_update,
+        scale=args.scale,
     )
     # load weights from default_weights.ckpt (state dict), nonstrict
     model.load_state_dict(torch.load('default_weights.ckpt'), strict=False)
