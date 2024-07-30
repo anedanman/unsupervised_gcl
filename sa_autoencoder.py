@@ -38,8 +38,8 @@ class SlotAttentionAutoEncoder(nn.Module):
             self.slot_upd = self.gmm.forward
         else:
             self.slot_upd = self._slot_upd
-        
-    def forward(self, image):
+
+    def img2slots(self, image):
         # `image` has shape: [batch_size, num_channels, width, height].
         # Convolutional encoder with position embedding.
         x = self.encoder_cnn(image)  # CNN Backbone.
@@ -48,15 +48,17 @@ class SlotAttentionAutoEncoder(nn.Module):
         x = F.relu(x)
         x = self.fc2(x)  # Feedforward network on set.
         # `x` has shape: [batch_size, width*height, input_size].
-
-        # Slot Attention module.
         slots_ = self.slot_attention(x)
+        return slots_
         
+    def forward(self, image):
+        slots_ = self.img2slots(image)
+
         # resample slots with GMM
-        slots_, _, log_likelihood = self.slot_upd(slots_)
+        slots, _, log_likelihood = self.slot_upd(slots_)
 
         # `slots` has shape: [batch_size, num_slots, slot_size].
-        recon_combined, recons, masks, slots_ = self.proc_slots(slots_, image.shape[0])
+        recon_combined, recons, masks, slots = self.proc_slots(slots, image.shape[0])
         return recon_combined, recons, masks, slots_, log_likelihood
     
     def proc_slots(self, slots_, batch_size):

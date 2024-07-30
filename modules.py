@@ -1,6 +1,8 @@
 import torch
 from torch import nn
 import lightning as L
+from sklearn.mixture import GaussianMixture
+import numpy as np
 
 from sa_autoencoder import SlotAttentionAutoEncoder, SlotAttentionPropPredAE
 from utils import hungarian_huber_loss, average_precision_clevr
@@ -61,6 +63,7 @@ class SA_PAE_module(L.LightningModule):
         self.num_slots = num_slots
         self.num_iterations = num_iterations
         self.hid_dim = hid_dim
+        self.num_components = num_components
 
         self.train_data = train_data
         self.val_data = val_data
@@ -68,8 +71,8 @@ class SA_PAE_module(L.LightningModule):
         self.steps_per_epoch = len(self.train_data) // self.batch_size
         self.desired_steps = desired_steps
         self.n_epochs = self.desired_steps // self.steps_per_epoch + 1
-        
         self.save_hyperparameters()
+        self.init_gmm_params()
 
     def forward(self, x):
         return self.model(x)
@@ -123,3 +126,28 @@ class SA_PAE_module(L.LightningModule):
         self.log_dict(metrics, on_step=False, on_epoch=True)
         self.log_dict(ap_metrics, on_step=False, on_epoch=True)
         return metrics['val_loss']
+    
+    def init_gmm_params(self):
+        print('Initializing GMM parameters...')
+        train_loader = self.train_dataloader()
+        i = 0
+        total_slots = []
+        for batch in train_loader:
+            images = batch['image']
+            slots = self.model.img2slots(images)
+            total_slots.append(slots)
+            i += 1
+            if i == 10:
+                break
+        total_slots = torch.cat(total_slots, dim=0)
+        total_slots = total_slots.cpu().numpy()
+        gmm = GaussianMixture(
+            n_components=self.model.num_components,
+            covariance_type='diag',
+            init_params='kmeans',
+            max_iter=100
+        )
+        gmm.fit(total_slots)
+        self.model.gmm.means.data = torch.FloatTensor(gmm.means_.copy(), device=self.device)
+        self.model.gmm.log_stds.data = torch.FloatTensor(1/np.sqrt(gmm.precisions_).copy(), device=self.device)
+        print('GMM parameters initialized.')
